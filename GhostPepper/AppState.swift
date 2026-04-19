@@ -1018,11 +1018,12 @@ class AppState: ObservableObject {
 
     private func loadAudioBuffer(from fileURL: URL) throws -> [Float] {
         let file = try AVAudioFile(forReading: fileURL)
+        guard file.length > 0 else {
+            throw AudioFileTranscriptionError.emptyAudio
+        }
+
         let sourceFormat = file.processingFormat
-        let clampedFrameLength = max(
-            min(file.length, Int64(UInt32.max)),
-            AudioFileTranscriptionConstants.minimumFrameLength
-        )
+        let clampedFrameLength = min(file.length, Int64(UInt32.max))
         let sourceFrameCapacity = AVAudioFrameCount(clampedFrameLength)
 
         guard let sourceBuffer = AVAudioPCMBuffer(
@@ -1052,11 +1053,13 @@ class AppState: ObservableObject {
 
         let sourceSampleRate = sourceFormat.sampleRate
         let targetSampleRate = targetFormat.sampleRate
-        let estimatedOutputFrameCount = max(
-            (Double(sourceBuffer.frameLength) * targetSampleRate / sourceSampleRate).rounded(.up),
-            AudioFileTranscriptionConstants.minimumOutputFrameCount
-        )
-        let outputFrameCapacity = AVAudioFrameCount(estimatedOutputFrameCount)
+        let estimatedOutputFrameCount = (Double(sourceBuffer.frameLength) * targetSampleRate / sourceSampleRate).rounded(.up)
+        guard estimatedOutputFrameCount > 0 else {
+            throw AudioFileTranscriptionError.emptyAudio
+        }
+
+        let clampedOutputFrameCount = min(estimatedOutputFrameCount, Double(UInt32.max))
+        let outputFrameCapacity = AVAudioFrameCount(Int64(clampedOutputFrameCount))
 
         guard let outputBuffer = AVAudioPCMBuffer(
             pcmFormat: targetFormat,
@@ -1797,9 +1800,4 @@ private enum AudioFileTranscriptionError: LocalizedError {
             return "Ghost Pepper could not generate a transcription."
         }
     }
-}
-
-private enum AudioFileTranscriptionConstants {
-    static let minimumFrameLength: Int64 = 1
-    static let minimumOutputFrameCount: Double = 1
 }

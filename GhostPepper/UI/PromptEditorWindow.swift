@@ -200,7 +200,7 @@ struct PromptEditorView: View {
 }
 
 private struct FileTranscriptionView: View {
-    private static let copiedMessageDurationNanoseconds: UInt64 = 1_200_000_000
+    private static let copiedMessageDuration: UInt64 = 1_200_000_000
 
     let title: String
     let transcript: String
@@ -243,7 +243,7 @@ private struct FileTranscriptionView: View {
                     copied = true
                     resetCopiedTask?.cancel()
                     resetCopiedTask = Task {
-                        try? await Task.sleep(nanoseconds: Self.copiedMessageDurationNanoseconds)
+                        try? await Task.sleep(nanoseconds: Self.copiedMessageDuration)
                         guard !Task.isCancelled else { return }
                         copied = false
                     }
