@@ -104,6 +104,66 @@ final class CleanupTranscriptWindowController: NSObject, NSWindowDelegate {
     }
 }
 
+final class FileTranscriptionWindowController: NSObject, NSWindowDelegate {
+    private var window: NSWindow?
+    private var hostingController: NSHostingController<FileTranscriptionView>?
+
+    func show(title: String, transcript: String) {
+        let contentView = FileTranscriptionView(
+            title: title,
+            transcript: transcript,
+            onClose: { [weak self] in
+                self?.dismiss()
+            }
+        )
+
+        if let hostingController {
+            hostingController.rootView = contentView
+        } else {
+            hostingController = NSHostingController(rootView: contentView)
+        }
+
+        if let window {
+            window.title = "Transcription — \(title)"
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        let newWindow = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 760, height: 620),
+            styleMask: [.titled, .closable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        newWindow.title = "Transcription — \(title)"
+        newWindow.delegate = self
+        newWindow.isReleasedWhenClosed = false
+        newWindow.contentViewController = hostingController
+        newWindow.center()
+        newWindow.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+
+        self.window = newWindow
+    }
+
+    func dismiss() {
+        if let window {
+            hide(window)
+        }
+    }
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        hide(sender)
+        return false
+    }
+
+    private func hide(_ window: NSWindow) {
+        window.makeFirstResponder(nil)
+        window.orderOut(nil)
+    }
+}
+
 struct PromptEditorView: View {
     @ObservedObject var appState: AppState
     let onClose: () -> Void
@@ -136,6 +196,76 @@ struct PromptEditorView: View {
         }
         .padding()
         .frame(minWidth: 450, minHeight: 350)
+    }
+}
+
+private struct FileTranscriptionView: View {
+    private static let copiedMessageDuration: TimeInterval = 1.2
+    private static var copiedMessageDurationNanoseconds: UInt64 {
+        UInt64(copiedMessageDuration * 1_000_000_000)
+    }
+
+    let title: String
+    let transcript: String
+    let onClose: () -> Void
+
+    @State private var copied = false
+    @State private var resetCopiedTask: Task<Void, Never>?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(.headline)
+                .lineLimit(2)
+                .truncationMode(.middle)
+
+            Text("Transcription")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            ScrollView {
+                Text(transcript)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+                    .padding(.vertical, 4)
+            }
+            .padding(10)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color(nsColor: .textBackgroundColor))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color(nsColor: .separatorColor))
+                    )
+            )
+
+            HStack {
+                Button(copied ? "Copied!" : "Copy") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(transcript, forType: .string)
+                    copied = true
+                    resetCopiedTask?.cancel()
+                    resetCopiedTask = Task {
+                        try? await Task.sleep(nanoseconds: Self.copiedMessageDurationNanoseconds)
+                        guard !Task.isCancelled else { return }
+                        copied = false
+                    }
+                }
+
+                Spacer()
+
+                Button("Done") {
+                    onClose()
+                }
+                .keyboardShortcut(.return)
+            }
+        }
+        .padding()
+        .frame(minWidth: 760, minHeight: 620)
+        .onDisappear {
+            resetCopiedTask?.cancel()
+            resetCopiedTask = nil
+        }
     }
 }
 
