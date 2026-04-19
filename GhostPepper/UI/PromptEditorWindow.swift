@@ -261,7 +261,7 @@ private struct FileTranscriptionView: View {
             }
         }
         .padding()
-        .frame(minWidth: 700, minHeight: 560)
+        .frame(minWidth: 760, minHeight: 620)
         .onDisappear {
             resetCopiedTask?.cancel()
             resetCopiedTask = nil

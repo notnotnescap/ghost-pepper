@@ -1023,8 +1023,7 @@ class AppState: ObservableObject {
         }
 
         let sourceFormat = file.processingFormat
-        let clampedFrameLength = min(file.length, Int64(UInt32.max))
-        let sourceFrameCapacity = AVAudioFrameCount(clampedFrameLength)
+        let sourceFrameCapacity = AVAudioFrameCount(UInt32(clamping: file.length))
 
         guard let sourceBuffer = AVAudioPCMBuffer(
             pcmFormat: sourceFormat,
@@ -1061,7 +1060,7 @@ class AppState: ObservableObject {
         }
 
         let clampedOutputFrameCount = min(estimatedOutputFrameCount, Double(UInt32.max))
-        let outputFrameCapacity = AVAudioFrameCount(Int64(clampedOutputFrameCount))
+        let outputFrameCapacity = AVAudioFrameCount(UInt32(clampedOutputFrameCount))
 
         guard let outputBuffer = AVAudioPCMBuffer(
             pcmFormat: targetFormat,
