@@ -104,6 +104,66 @@ final class CleanupTranscriptWindowController: NSObject, NSWindowDelegate {
     }
 }
 
+final class FileTranscriptionWindowController: NSObject, NSWindowDelegate {
+    private var window: NSWindow?
+    private var hostingController: NSHostingController<FileTranscriptionView>?
+
+    func show(title: String, transcript: String) {
+        let contentView = FileTranscriptionView(
+            title: title,
+            transcript: transcript,
+            onClose: { [weak self] in
+                self?.dismiss()
+            }
+        )
+
+        if let hostingController {
+            hostingController.rootView = contentView
+        } else {
+            hostingController = NSHostingController(rootView: contentView)
+        }
+
+        if let window {
+            window.title = "Transcription — \(title)"
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 760, height: 620),
+            styleMask: [.titled, .closable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Transcription — \(title)"
+        window.delegate = self
+        window.isReleasedWhenClosed = false
+        window.contentViewController = hostingController
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+
+        self.window = window
+    }
+
+    func dismiss() {
+        if let window {
+            hide(window)
+        }
+    }
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        hide(sender)
+        return false
+    }
+
+    private func hide(_ window: NSWindow) {
+        window.makeFirstResponder(nil)
+        window.orderOut(nil)
+    }
+}
+
 struct PromptEditorView: View {
     @ObservedObject var appState: AppState
     let onClose: () -> Void
@@ -136,6 +196,63 @@ struct PromptEditorView: View {
         }
         .padding()
         .frame(minWidth: 450, minHeight: 350)
+    }
+}
+
+private struct FileTranscriptionView: View {
+    let title: String
+    let transcript: String
+    let onClose: () -> Void
+
+    @State private var copied = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(.headline)
+                .lineLimit(2)
+                .truncationMode(.middle)
+
+            Text("Transcription")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            ScrollView {
+                Text(transcript)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+                    .padding(.vertical, 4)
+            }
+            .padding(10)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color(nsColor: .textBackgroundColor))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color(nsColor: .separatorColor))
+                    )
+            )
+
+            HStack {
+                Button(copied ? "Copied!" : "Copy") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(transcript, forType: .string)
+                    copied = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                        copied = false
+                    }
+                }
+
+                Spacer()
+
+                Button("Done") {
+                    onClose()
+                }
+                .keyboardShortcut(.return)
+            }
+        }
+        .padding()
+        .frame(minWidth: 700, minHeight: 560)
     }
 }
 

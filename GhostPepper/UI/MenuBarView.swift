@@ -22,6 +22,11 @@ struct MenuBarView: View {
                 appState.showDebugLog()
             }
 
+            Button("Transcribe Audio File...") {
+                appState.transcribeAudioFileFromMenuBar()
+            }
+            .disabled(!canStartAudioFileTranscription)
+
             if appState.meetingTranscriptEnabled {
                 Divider()
 
@@ -115,6 +120,15 @@ struct MenuBarView: View {
             return "Cleaning up..."
         case .error:
             return nil
+        }
+    }
+
+    private var canStartAudioFileTranscription: Bool {
+        switch appState.status {
+        case .ready, .error:
+            return true
+        case .loading, .recording, .transcribing, .cleaningUp:
+            return false
         }
     }
 }

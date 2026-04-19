@@ -1,4 +1,6 @@
 import SwiftUI
+import AppKit
+import AVFoundation
 import Combine
 import ServiceManagement
 
@@ -891,6 +893,7 @@ class AppState: ObservableObject {
     private let settingsController = SettingsWindowController()
     private let promptEditorController = PromptEditorController()
     private let cleanupTranscriptWindowController = CleanupTranscriptWindowController()
+    private let fileTranscriptionWindowController = FileTranscriptionWindowController()
     private let debugLogWindowController = DebugLogWindowController()
     private let pepperChatWindowController = PepperChatWindowController()
     private lazy var meetingTranscriptWindowController: MeetingTranscriptWindowController = {
@@ -954,6 +957,131 @@ class AppState: ObservableObject {
     func showPepperChat() {
         guard pepperChatEnabled else { return }
         pepperChatWindowController.show(session: pepperChatSession)
+    }
+
+    func transcribeAudioFileFromMenuBar() {
+        guard status != .recording else {
+            errorMessage = "Stop the current recording before transcribing an audio file."
+            return
+        }
+
+        guard transcriber.isReady else {
+            errorMessage = "Speech model is still loading. Try again in a moment."
+            return
+        }
+
+        let panel = NSOpenPanel()
+        panel.message = "Choose an audio file to transcribe"
+        panel.prompt = "Transcribe"
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedFileTypes = ["wav", "mp3", "m4a", "aac", "aiff", "flac", "caf"]
+
+        guard panel.runModal() == .OK, let url = panel.url else {
+            return
+        }
+
+        Task { await transcribeAudioFile(url) }
+    }
+
+    private func transcribeAudioFile(_ fileURL: URL) async {
+        status = .transcribing
+        errorMessage = nil
+
+        do {
+            let audioBuffer = try loadAudioBuffer(from: fileURL)
+            guard !audioBuffer.isEmpty else {
+                throw AudioFileTranscriptionError.emptyAudio
+            }
+
+            guard let rawText = await transcribeAudioBuffer(audioBuffer) else {
+                throw AudioFileTranscriptionError.transcriptionFailed
+            }
+
+            let cleaned = await cleanedTranscription(rawText)
+            guard !cleaned.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw AudioFileTranscriptionError.transcriptionFailed
+            }
+
+            fileTranscriptionWindowController.show(
+                title: fileURL.lastPathComponent,
+                transcript: cleaned
+            )
+            status = .ready
+        } catch {
+            status = .error
+            errorMessage = "Could not transcribe \(fileURL.lastPathComponent): \(error.localizedDescription)"
+        }
+    }
+
+    private func loadAudioBuffer(from fileURL: URL) throws -> [Float] {
+        let file = try AVAudioFile(forReading: fileURL)
+        let sourceFormat = file.processingFormat
+        let clampedFrameLength = max(min(file.length, Int64(UInt32.max)), 1)
+        let sourceFrameCapacity = AVAudioFrameCount(clampedFrameLength)
+
+        guard let sourceBuffer = AVAudioPCMBuffer(
+            pcmFormat: sourceFormat,
+            frameCapacity: sourceFrameCapacity
+        ) else {
+            throw AudioFileTranscriptionError.unreadableAudio
+        }
+
+        try file.read(into: sourceBuffer)
+        guard sourceBuffer.frameLength > 0 else {
+            throw AudioFileTranscriptionError.emptyAudio
+        }
+
+        let targetFormat = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: 16_000,
+            channels: 1,
+            interleaved: false
+        )!
+
+        guard let converter = AVAudioConverter(from: sourceFormat, to: targetFormat) else {
+            throw AudioFileTranscriptionError.unsupportedFormat
+        }
+
+        let outputFrameCapacity = AVAudioFrameCount(
+            max((Double(sourceBuffer.frameLength) * (targetFormat.sampleRate / sourceFormat.sampleRate)).rounded(.up), 1)
+        )
+
+        guard let outputBuffer = AVAudioPCMBuffer(
+            pcmFormat: targetFormat,
+            frameCapacity: outputFrameCapacity
+        ) else {
+            throw AudioFileTranscriptionError.unreadableAudio
+        }
+
+        var didProvideInput = false
+        var conversionError: NSError?
+        converter.convert(to: outputBuffer, error: &conversionError) { _, outStatus in
+            if didProvideInput {
+                outStatus.pointee = .endOfStream
+                return nil
+            }
+            didProvideInput = true
+            outStatus.pointee = .haveData
+            return sourceBuffer
+        }
+
+        if let conversionError {
+            throw conversionError
+        }
+
+        guard let channelData = outputBuffer.floatChannelData,
+              outputBuffer.frameLength > 0 else {
+            throw AudioFileTranscriptionError.unreadableAudio
+        }
+
+        return Array(
+            UnsafeBufferPointer(
+                start: channelData[0],
+                count: Int(outputBuffer.frameLength)
+            )
+        )
     }
 
     private var pepperChatRecorder: AudioRecorder?
@@ -1637,6 +1765,26 @@ class AppState: ObservableObject {
             )
         case .idle, .loading:
             return (currentStatus, currentErrorMessage)
+        }
+    }
+}
+
+private enum AudioFileTranscriptionError: LocalizedError {
+    case unreadableAudio
+    case unsupportedFormat
+    case emptyAudio
+    case transcriptionFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .unreadableAudio:
+            return "The selected file could not be read."
+        case .unsupportedFormat:
+            return "The selected file uses an unsupported audio format."
+        case .emptyAudio:
+            return "The selected file did not contain audible samples."
+        case .transcriptionFailed:
+            return "Ghost Pepper could not generate a transcription."
         }
     }
 }
