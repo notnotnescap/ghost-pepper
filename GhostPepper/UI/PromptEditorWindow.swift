@@ -130,21 +130,21 @@ final class FileTranscriptionWindowController: NSObject, NSWindowDelegate {
             return
         }
 
-        let window = NSWindow(
+        let newWindow = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 760, height: 620),
             styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false
         )
-        window.title = "Transcription — \(title)"
-        window.delegate = self
-        window.isReleasedWhenClosed = false
-        window.contentViewController = hostingController
-        window.center()
-        window.makeKeyAndOrderFront(nil)
+        newWindow.title = "Transcription — \(title)"
+        newWindow.delegate = self
+        newWindow.isReleasedWhenClosed = false
+        newWindow.contentViewController = hostingController
+        newWindow.center()
+        newWindow.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
 
-        self.window = window
+        self.window = newWindow
     }
 
     func dismiss() {
@@ -200,7 +200,10 @@ struct PromptEditorView: View {
 }
 
 private struct FileTranscriptionView: View {
-    private static let copiedMessageDuration: UInt64 = 1_200_000_000
+    private static let copiedMessageDuration: TimeInterval = 1.2
+    private static var copiedMessageDurationNanoseconds: UInt64 {
+        UInt64(copiedMessageDuration * 1_000_000_000)
+    }
 
     let title: String
     let transcript: String
@@ -243,7 +246,7 @@ private struct FileTranscriptionView: View {
                     copied = true
                     resetCopiedTask?.cancel()
                     resetCopiedTask = Task {
-                        try? await Task.sleep(nanoseconds: Self.copiedMessageDuration)
+                        try? await Task.sleep(nanoseconds: Self.copiedMessageDurationNanoseconds)
                         guard !Task.isCancelled else { return }
                         copied = false
                     }

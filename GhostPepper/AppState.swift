@@ -1053,7 +1053,9 @@ class AppState: ObservableObject {
 
         let sourceSampleRate = sourceFormat.sampleRate
         let targetSampleRate = targetFormat.sampleRate
-        let estimatedOutputFrameCount = (Double(sourceBuffer.frameLength) * targetSampleRate / sourceSampleRate).rounded(.up)
+        let sampleRateRatio = targetSampleRate / sourceSampleRate
+        let estimatedOutputFrames = Double(sourceBuffer.frameLength) * sampleRateRatio
+        let estimatedOutputFrameCount = estimatedOutputFrames.rounded(.up)
         guard estimatedOutputFrameCount > 0 else {
             throw AudioFileTranscriptionError.emptyAudio
         }
