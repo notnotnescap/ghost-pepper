@@ -3,6 +3,7 @@ import AppKit
 import AVFoundation
 import Combine
 import ServiceManagement
+import UniformTypeIdentifiers
 
 enum AppStatus: String {
     case ready = "Ready"
@@ -976,7 +977,7 @@ class AppState: ObservableObject {
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
-        panel.allowedFileTypes = ["wav", "mp3", "m4a", "aac", "aiff", "flac", "caf"]
+        panel.allowedContentTypes = [.audio]
 
         guard panel.runModal() == .OK, let url = panel.url else {
             return
@@ -1033,19 +1034,23 @@ class AppState: ObservableObject {
             throw AudioFileTranscriptionError.emptyAudio
         }
 
-        let targetFormat = AVAudioFormat(
+        guard let targetFormat = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
             sampleRate: 16_000,
             channels: 1,
             interleaved: false
-        )!
+        ) else {
+            throw AudioFileTranscriptionError.unsupportedFormat
+        }
 
         guard let converter = AVAudioConverter(from: sourceFormat, to: targetFormat) else {
             throw AudioFileTranscriptionError.unsupportedFormat
         }
 
+        let sourceSampleRate = sourceFormat.sampleRate
+        let targetSampleRate = targetFormat.sampleRate
         let estimatedOutputFrameCount = max(
-            (Double(sourceBuffer.frameLength) * (targetFormat.sampleRate / sourceFormat.sampleRate)).rounded(.up),
+            (Double(sourceBuffer.frameLength) * targetSampleRate / sourceSampleRate).rounded(.up),
             1
         )
         let outputFrameCapacity = AVAudioFrameCount(estimatedOutputFrameCount)
