@@ -1044,9 +1044,11 @@ class AppState: ObservableObject {
             throw AudioFileTranscriptionError.unsupportedFormat
         }
 
-        let outputFrameCapacity = AVAudioFrameCount(
-            max((Double(sourceBuffer.frameLength) * (targetFormat.sampleRate / sourceFormat.sampleRate)).rounded(.up), 1)
+        let estimatedOutputFrameCount = max(
+            (Double(sourceBuffer.frameLength) * (targetFormat.sampleRate / sourceFormat.sampleRate)).rounded(.up),
+            1
         )
+        let outputFrameCapacity = AVAudioFrameCount(estimatedOutputFrameCount)
 
         guard let outputBuffer = AVAudioPCMBuffer(
             pcmFormat: targetFormat,

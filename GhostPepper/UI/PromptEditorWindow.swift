@@ -205,6 +205,7 @@ private struct FileTranscriptionView: View {
     let onClose: () -> Void
 
     @State private var copied = false
+    @State private var resetCopiedTask: Task<Void, Never>?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -238,7 +239,10 @@ private struct FileTranscriptionView: View {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(transcript, forType: .string)
                     copied = true
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                    resetCopiedTask?.cancel()
+                    resetCopiedTask = Task {
+                        try? await Task.sleep(nanoseconds: 1_200_000_000)
+                        guard !Task.isCancelled else { return }
                         copied = false
                     }
                 }
@@ -253,6 +257,10 @@ private struct FileTranscriptionView: View {
         }
         .padding()
         .frame(minWidth: 700, minHeight: 560)
+        .onDisappear {
+            resetCopiedTask?.cancel()
+            resetCopiedTask = nil
+        }
     }
 }
 
